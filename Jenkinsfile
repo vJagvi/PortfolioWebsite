@@ -55,7 +55,7 @@ pipeline {
             }
         }
 
-        stage('Invalidate CloudFront Cache') {
+                stage('Invalidate CloudFront Cache') {
             steps {
                 echo '🌐 Invalidating CloudFront cache for updated files...'
                 withCredentials([usernamePassword(
@@ -76,12 +76,13 @@ pipeline {
                         echo Found CloudFront domain: %CLOUDFRONT_DOMAIN%
 
                         echo 🔍 Getting Distribution ID from AWS CloudFront...
-                        powershell -Command "$env:AWS_ACCESS_KEY_ID='%AWS_ACCESS_KEY_ID%'; $env:AWS_SECRET_ACCESS_KEY='%AWS_SECRET_ACCESS_KEY%'; $domain='%CLOUDFRONT_DOMAIN%'; $distId=(aws cloudfront list-distributions --query \\"DistributionList.Items[?DomainName=='$domain'].Id\\" --output text); if ($distId -eq '') { Write-Host '❌ Could not find CloudFront Distribution ID'; exit 1 } else { Write-Host '✅ Found Distribution ID:' $distId; aws cloudfront create-invalidation --distribution-id $distId --paths '/*' --region %AWS_REGION%; }"
+                        powershell -Command "$env:AWS_ACCESS_KEY_ID='%AWS_ACCESS_KEY_ID%'; $env:AWS_SECRET_ACCESS_KEY='%AWS_SECRET_ACCESS_KEY%'; \$domain='%CLOUDFRONT_DOMAIN%'; \$distId=(aws cloudfront list-distributions --query \\"DistributionList.Items[?DomainName=='\$domain'].Id\\" --output text); if (\$distId -eq '') { Write-Host '❌ Could not find CloudFront Distribution ID'; exit 1 } else { Write-Host '✅ Found Distribution ID:' \$distId; aws cloudfront create-invalidation --distribution-id \$distId --paths '/*' --region %AWS_REGION%; }"
                         """
                     }
                 }
             }
         }
+
     }
 
     post {
