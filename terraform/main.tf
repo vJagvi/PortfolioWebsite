@@ -2,30 +2,65 @@ provider "aws" {
   region = var.region
 }
 
+# -------------------------------
+# S3 Bucket (No ACL, ownership-enforced)
+# -------------------------------
 resource "aws_s3_bucket" "portfolio" {
   bucket = var.bucket_name
-  acl    = "public-read"
 
-  website {
-    index_document = "index.html"
-    error_document = "index.html"
+  tags = {
+    Name    = "PortfolioBucket"
+    Project = "Jagvi-Portfolio"
   }
 }
 
-resource "aws_s3_bucket_policy" "allow_public_access" {
+# -------------------------------
+# S3 Public Access Configuration
+# -------------------------------
+resource "aws_s3_bucket_public_access_block" "portfolio_public" {
+  bucket                  = aws_s3_bucket.portfolio.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+# -------------------------------
+# S3 Website Configuration
+# -------------------------------
+resource "aws_s3_bucket_website_configuration" "portfolio_website" {
+  bucket = aws_s3_bucket.portfolio.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+}
+
+# -------------------------------
+# S3 Bucket Policy (Public Read)
+# -------------------------------
+resource "aws_s3_bucket_policy" "public_policy" {
   bucket = aws_s3_bucket.portfolio.id
 
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
+      Sid       = "PublicReadAccess",
       Effect    = "Allow",
       Principal = "*",
-      Action    = ["s3:GetObject"],
+      Action    = "s3:GetObject",
       Resource  = "${aws_s3_bucket.portfolio.arn}/*"
     }]
   })
 }
 
+# -------------------------------
+# CloudFront Distribution
+# -------------------------------
 resource "aws_cloudfront_distribution" "cdn" {
   enabled             = true
   default_root_object = "index.html"
@@ -56,12 +91,16 @@ resource "aws_cloudfront_distribution" "cdn" {
       restriction_type = "none"
     }
   }
+
+  tags = {
+    Project = "Jagvi-Portfolio"
+  }
 }
 
 output "s3_bucket_name" {
   value = aws_s3_bucket.portfolio.bucket
 }
 
-output "cloudfront_url" {
+output "cloudfront_domain" {
   value = aws_cloudfront_distribution.cdn.domain_name
 }
