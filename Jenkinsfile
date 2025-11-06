@@ -56,23 +56,44 @@ pipeline {
         }
 
         stage('Invalidate CloudFront Cache') {
-            steps {
-                echo '🌐 Invalidating CloudFront cache for updated files...'
-                withCredentials([usernamePassword(
-                    credentialsId: 'aws-s3-deploy-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
-                    bat """
-                    set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
-                    set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
-                    for /f "delims=" %%d in ('"%TERRAFORM%" output -raw cloudfront_domain') do set CLOUDFRONT_DOMAIN=%%d
-                    for /f "tokens=2 delims=/" %%a in ('"%AWS_CLI%" cloudfront list-distributions --query "DistributionList.Items[?DomainName=='%CLOUDFRONT_DOMAIN%'].Id" --output text') do set DIST_ID=%%a
-                    "%AWS_CLI%" cloudfront create-invalidation --distribution-id %DIST_ID% --paths "/*"
-                    """
-                }
+    steps {
+        echo '🌐 Invalidating CloudFront cache for updated files...'
+        withCredentials([usernamePassword(
+            credentialsId: 'aws-s3-deploy-creds',
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+            dir('terraform') {
+                bat """
+                set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                
+                REM Get CloudFront domain from Terraform outputs
+                "%TERRAFORM%" output -json > tf_output.json
+
+                REM Extract domain name
+                for /f "tokens=* usebackq" %%i in (`powershell -Command "(Get-Content tf_output.json | ConvertFrom-Json).cloudfront_domain.value"`) do set CLOUDFRONT_DOMAIN=%%i
+                
+                echo CloudFront Domain: %CLOUDFRONT_DOMAIN%
+
+                REM Get Distribution ID safely
+                for /f "delims=" %%d in ('"%AWS_CLI%" cloudfront list-distributions --query "DistributionList.Items[?DomainName==''%CLOUDFRONT_DOMAIN%''].Id" --output text') do set DIST_ID=%%d
+                
+                echo CloudFront Distribution ID: %DIST_ID%
+                
+                if "%DIST_ID%"=="" (
+                    echo ❌ Could not find CloudFront Distribution ID for domain %CLOUDFRONT_DOMAIN%
+                    exit /b 1
+                ) else (
+                    echo ✅ Creating CloudFront invalidation...
+                    "%AWS_CLI%" cloudfront create-invalidation --distribution-id %DIST_ID% --paths "/*" --region %AWS_REGION%
+                )
+                """
             }
         }
+    }
+}
+
     }
 
     post {
