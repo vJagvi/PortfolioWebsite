@@ -88,9 +88,11 @@ pipeline {
     post {
         success {
             echo 'Portfolio successfully deployed to AWS S3 + CloudFront!'
-            bat """
-            "%TERRAFORM%" output -raw cloudfront_domain
-            """
+             dir('terraform') {
+                bat """
+                "%TERRAFORM%" output -raw cloudfront_domain
+                """
+            }
         }
         failure {
             echo 'Deployment failed! Check Jenkins logs for details.'
