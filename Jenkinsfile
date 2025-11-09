@@ -1,8 +1,10 @@
 pipeline {
   agent any
+
   environment {
-    AWS_REGION = "us-east-1"
-    S3_BUCKET  = "jagvi-portfolio-site"
+    AWS_REGION  = "us-east-1"
+    S3_BUCKET   = "jagvi-portfolio-site"
+    DOCKER_HOST = "tcp://host.docker.internal:2375"
   }
 
   stages {
@@ -17,12 +19,15 @@ pipeline {
     stage('Terraform Init & Apply') {
       steps {
         echo "🏗️ Running Terraform inside its container..."
-        withCredentials([usernamePassword(
-          credentialsId: 'aws-s3-deploy-creds',
-          usernameVariable: 'AWS_ACCESS_KEY_ID',
-          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-        )]) {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'aws-s3-deploy-creds',
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
           sh '''
+            echo "➡️ Executing Terraform in container..."
             docker exec \
               -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
               -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -39,13 +44,16 @@ pipeline {
 
     stage('Upload Website to S3') {
       steps {
-        echo "☁️ Uploading HTML/CSS files using AWS CLI container..."
-        withCredentials([usernamePassword(
-          credentialsId: 'aws-s3-deploy-creds',
-          usernameVariable: 'AWS_ACCESS_KEY_ID',
-          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-        )]) {
+        echo "☁️ Uploading static website files using AWS CLI container..."
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'aws-s3-deploy-creds',
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
           sh '''
+            echo "➡️ Syncing website folder to S3..."
             docker exec \
               -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
               -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -62,12 +70,15 @@ pipeline {
     stage('Invalidate CloudFront Cache') {
       steps {
         echo "🌀 Invalidating CloudFront cache..."
-        withCredentials([usernamePassword(
-          credentialsId: 'aws-s3-deploy-creds',
-          usernameVariable: 'AWS_ACCESS_KEY_ID',
-          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-        )]) {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'aws-s3-deploy-creds',
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
           sh '''
+            echo "➡️ Fetching CloudFront domain from Terraform outputs..."
             CLOUDFRONT_DOMAIN=$(docker exec terraform terraform output -raw cloudfront_domain)
             echo "🌍 CloudFront Domain: $CLOUDFRONT_DOMAIN"
 
@@ -93,9 +104,10 @@ pipeline {
   post {
     success {
       echo "✅ Portfolio successfully deployed to AWS S3 + CloudFront!"
+      echo "🌐 Visit your CloudFront domain for the live site."
     }
     failure {
-      echo "❌ Deployment failed. Check Jenkins logs."
+      echo "❌ Deployment failed. Check Jenkins logs for errors."
     }
   }
 }
