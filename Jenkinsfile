@@ -1,101 +1,99 @@
 pipeline {
-    agent any
+  agent any
+  environment {
+    AWS_REGION = "us-east-1"
+    S3_BUCKET  = "jagvi-portfolio-site"
+  }
 
-    environment {
-        AWS_REGION = "us-east-1"
-        TERRAFORM  = "C:\\terraform_1.13.3_windows_386\\terraform.exe"
-        AWS_CLI    = "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe"
-        S3_BUCKET  = "jagvi-portfolio-site"
+  stages {
+    stage('Checkout') {
+      steps {
+        echo "📦 Cloning Portfolio Repository..."
+        git branch: 'main', url: 'https://github.com/vJagvi/PortfolioWebsite.git'
+      }
     }
 
-    stages {
-        stage('Clone Repository') {
-            steps {
-                echo 'Cloning portfolio repository...'
-                git branch: 'main', url: 'https://github.com/vJagvi/PortfolioWebsite.git'
-            }
+    stage('Terraform Init & Apply') {
+      steps {
+        echo "⚙️ Running Terraform in terraform container..."
+        withCredentials([usernamePassword(
+          credentialsId: 'aws-s3-deploy-creds',
+          usernameVariable: 'AWS_ACCESS_KEY_ID',
+          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+          sh """
+            docker exec \
+              -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+              -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+              -e AWS_REGION=${AWS_REGION} \
+              terraform sh -c '
+                cd /workspace
+                terraform init -input=false
+                terraform apply -auto-approve -input=false
+              '
+          """
         }
-
-        stage('Terraform Init & Apply') {
-            steps {
-                echo 'Creating/Updating S3 and CloudFront via Terraform...'
-                withCredentials([usernamePassword(
-                    credentialsId: 'aws-s3-deploy-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
-                    dir('terraform') {
-                        bat """
-                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
-                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
-                        "%TERRAFORM%" init
-                        "%TERRAFORM%" apply -auto-approve
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Upload Website to S3') {
-            steps {
-                echo 'Uploading static website files to S3...'
-                withCredentials([usernamePassword(
-                    credentialsId: 'aws-s3-deploy-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
-                    dir('website') {
-                        bat """
-                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
-                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
-                        "%AWS_CLI%" s3 sync . s3://%S3_BUCKET% --delete --region %AWS_REGION%
-                        """
-                    }
-                }
-            }
-        }
-
-                stage('Invalidate CloudFront Cache') {
-            steps {
-                echo 'Invalidating CloudFront cache for updated files...'
-                withCredentials([usernamePassword(
-                    credentialsId: 'aws-s3-deploy-creds',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID',
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                )]) {
-                    dir('terraform') {
-                        bat """
-                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
-                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
-                        set PATH=%PATH%;"C:\\Program Files\\Amazon\\AWSCLIV2\\"
-
-                        echo Getting CloudFront domain from Terraform outputs...
-                        "%TERRAFORM%" output -raw cloudfront_domain > domain.txt
-
-                        for /F "tokens=* delims=" %%A in (domain.txt) do set CLOUDFRONT_DOMAIN=%%A
-                        echo Found CloudFront domain: %CLOUDFRONT_DOMAIN%
-
-                        echo Getting Distribution ID from AWS CloudFront...
-                        powershell -Command "$env:AWS_ACCESS_KEY_ID='%AWS_ACCESS_KEY_ID%'; $env:AWS_SECRET_ACCESS_KEY='%AWS_SECRET_ACCESS_KEY%'; \$domain='%CLOUDFRONT_DOMAIN%'; \$distId=(aws cloudfront list-distributions --query \\"DistributionList.Items[?DomainName=='\$domain'].Id\\" --output text); if (\$distId -eq '') { Write-Host '❌ Could not find CloudFront Distribution ID'; exit 1 } else { Write-Host '✅ Found Distribution ID:' \$distId; aws cloudfront create-invalidation --distribution-id \$distId --paths '/*' --region %AWS_REGION%; }"
-                        """
-                    }
-                }
-            }
-        }
-
+      }
     }
 
-    post {
-        success {
-            echo 'Portfolio successfully deployed to AWS S3 + CloudFront!'
-             dir('terraform') {
-                bat """
-                "%TERRAFORM%" output -raw cloudfront_domain
-                """
-            }
+    stage('Upload Website to S3') {
+      steps {
+        echo "☁️ Uploading site via AWS CLI container..."
+        withCredentials([usernamePassword(
+          credentialsId: 'aws-s3-deploy-creds',
+          usernameVariable: 'AWS_ACCESS_KEY_ID',
+          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+          sh """
+            docker exec \
+              -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+              -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+              -e AWS_REGION=${AWS_REGION} \
+              awscli sh -c '
+                cd /workspace
+                aws s3 sync . s3://${S3_BUCKET} --delete --region ${AWS_REGION}
+              '
+          """
         }
-        failure {
-            echo 'Deployment failed! Check Jenkins logs for details.'
-        }
+      }
     }
+
+    stage('Invalidate CloudFront Cache') {
+      steps {
+        echo "🌀 Invalidating CloudFront cache..."
+        withCredentials([usernamePassword(
+          credentialsId: 'aws-s3-deploy-creds',
+          usernameVariable: 'AWS_ACCESS_KEY_ID',
+          passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+        )]) {
+          sh """
+            CLOUDFRONT_DOMAIN=$(docker exec terraform terraform output -raw cloudfront_domain)
+
+            docker exec \
+              -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+              -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+              -e AWS_REGION=${AWS_REGION} \
+              awscli sh -c '
+                DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName==\\"${CLOUDFRONT_DOMAIN}\\"].Id" --output text)
+                if [ -z "$DIST_ID" ]; then
+                  echo "❌ Could not find CloudFront Distribution for domain ${CLOUDFRONT_DOMAIN}"
+                  exit 1
+                fi
+                echo "✅ Found Distribution ID: $DIST_ID"
+                aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*" --region ${AWS_REGION}
+              '
+          """
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ Portfolio successfully deployed to AWS S3 + CloudFront!"
+    }
+    failure {
+      echo "❌ Deployment failed. Check logs."
+    }
+  }
 }
