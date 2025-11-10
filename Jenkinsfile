@@ -107,7 +107,7 @@ pipeline {
       echo "🌐 Visit your CloudFront domain for the live site."
     }
     failure {
-      echo "❌ Deployment failed. Check Jenkins logs for errors."
+      echo "Deployment failed. Check Jenkins logs for errors."
     }
   }
 }
