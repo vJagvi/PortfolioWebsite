@@ -62,7 +62,7 @@ pipeline {
       }
     }
 
-        stage('Invalidate CloudFront Cache') {
+            stage('Invalidate CloudFront Cache') {
       steps {
         echo "🌀 Invalidating CloudFront cache..."
         withCredentials([usernamePassword(
