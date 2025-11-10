@@ -1,9 +1,6 @@
 version: "3.8"
 
 services:
-  # -------------------------------------------------
-  # 🧰 Jenkins – CI/CD Controller
-  # -------------------------------------------------
   jenkins:
     build:
       context: .
@@ -24,37 +21,28 @@ services:
     networks:
       - portfolio_net
 
-  # -------------------------------------------------
-  # 🪄 Terraform – Infra as Code
-  # -------------------------------------------------
   terraform:
-    image: alpine:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.terraform
     container_name: terraform
     working_dir: /workspace
     volumes:
       - ./terraform:/workspace
-    command: >
-      sh -c "apk add --no-cache terraform bash && while true; do sleep 3600; done"
     networks:
       - portfolio_net
 
-  # -------------------------------------------------
-  # ☁️ AWS CLI – For S3 Uploads & CloudFront
-  # -------------------------------------------------
   awscli:
-    image: alpine:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.awscli
     container_name: awscli
     working_dir: /workspace
     volumes:
       - ./website:/workspace
-    command: >
-      sh -c "apk add --no-cache aws-cli bash && while true; do sleep 3600; done"
     networks:
       - portfolio_net
 
-# -------------------------------------------------
-# 🔐 Volumes & Network
-# -------------------------------------------------
 volumes:
   jenkins_home:
 

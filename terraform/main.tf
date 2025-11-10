@@ -43,7 +43,7 @@ resource "aws_s3_bucket_website_configuration" "portfolio_website" {
 # -------------------------------
 # S3 Bucket Policy (Public Read)
 # -------------------------------
-resource "aws_s3_bucket_policy" "public_policy" {
+/*resource "aws_s3_bucket_policy" "public_policy" {
   bucket = aws_s3_bucket.portfolio.id
 
   policy = jsonencode({
@@ -56,7 +56,7 @@ resource "aws_s3_bucket_policy" "public_policy" {
       Resource  = "${aws_s3_bucket.portfolio.arn}/*"
     }]
   })
-}
+}*/
 
 # -------------------------------
 # CloudFront Distribution

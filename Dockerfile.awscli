@@ -1,0 +1,5 @@
+FROM alpine:latest
+RUN apk add --no-cache bash python3 py3-pip && \
+    pip install --break-system-packages awscli
+WORKDIR /workspace
+CMD ["sh", "-c", "while true; do sleep 3600; done"]

@@ -1,0 +1,7 @@
+FROM alpine:latest
+RUN apk add --no-cache bash curl unzip \
+    && curl -fsSL https://releases.hashicorp.com/terraform/1.6.6/terraform_1.6.6_linux_amd64.zip -o terraform.zip \
+    && unzip terraform.zip -d /usr/local/bin \
+    && rm terraform.zip
+WORKDIR /workspace
+CMD ["sh", "-c", "while true; do sleep 3600; done"]
