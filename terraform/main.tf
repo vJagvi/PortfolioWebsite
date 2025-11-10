@@ -56,8 +56,8 @@ resource "aws_s3_bucket_website_configuration" "portfolio_website" {
       Resource  = "${aws_s3_bucket.portfolio.arn}/*"
     }]
   })
-}*/
-
+}
+*/
 # -------------------------------
 # CloudFront Distribution
 # -------------------------------
