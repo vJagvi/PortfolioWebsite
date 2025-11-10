@@ -62,7 +62,7 @@ pipeline {
       }
     }
 
-    stage('Invalidate CloudFront Cache') {
+        stage('Invalidate CloudFront Cache') {
       steps {
         echo "🌀 Invalidating CloudFront cache..."
         withCredentials([usernamePassword(
@@ -75,24 +75,38 @@ pipeline {
             CLOUDFRONT_DOMAIN=$(docker exec terraform terraform output -raw cloudfront_domain)
             echo "🌍 CloudFront Domain: $CLOUDFRONT_DOMAIN"
 
+            echo 🔍 Fetching Distribution ID inside awscli container...
+            DIST_ID=$(docker exec \
+              -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+              -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+              -e AWS_REGION=${AWS_REGION} \
+              awscli sh -c "
+                aws cloudfront list-distributions \
+                  --query 'DistributionList.Items[?DomainName==\\\"'${CLOUDFRONT_DOMAIN}'\\\"].Id' \
+                  --output text
+              ")
+
+            if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+              echo "❌ Could not find CloudFront Distribution for domain $CLOUDFRONT_DOMAIN"
+              exit 1
+            fi
+
+            echo "✅ Found Distribution ID: $DIST_ID"
             docker exec \
               -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
               -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
               -e AWS_REGION=${AWS_REGION} \
               awscli sh -c "
-                echo 🔍 Searching for CloudFront distribution...
-                DIST_ID=$(aws cloudfront list-distributions --query 'DistributionList.Items[?DomainName==\"'${CLOUDFRONT_DOMAIN}'\"].Id' --output text)
-                if [ -z \"$DIST_ID\" ] || [ \"$DIST_ID\" = \"None\" ]; then
-                  echo '❌ Could not find CloudFront Distribution for domain' ${CLOUDFRONT_DOMAIN}
-                  exit 1
-                fi
-                echo '✅ Found Distribution ID:' $DIST_ID
-                aws cloudfront create-invalidation --distribution-id $DIST_ID --paths '/*' --region ${AWS_REGION}
+                aws cloudfront create-invalidation \
+                  --distribution-id $DIST_ID \
+                  --paths '/*' \
+                  --region ${AWS_REGION}
               "
           '''
         }
       }
     }
+
   }
 
   post {
